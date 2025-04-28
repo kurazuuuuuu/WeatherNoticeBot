@@ -2,4 +2,4 @@ requests
 discord.py
 python-dotenv
 supabase
-google-genai
+google-generativeai
