@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 import google.generativeai as genai
 from jma_weather_api import get_jma_data
-# from supabase_access import get_user_data
+from supabase_access import get_user_data
 
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -17,17 +17,15 @@ def generate_response(prompt):
     return response.text
 
 def weather_report_response(user_id):
-    # area_code = get_user_data(user_id)
-    area_code = "400000"  # 福岡県
-    jma_data, jma_overview_data = get_jma_data(area_code)
+    user_data = get_user_data(user_id)
 
-    jma_area = jma_overview_data["area"]
-
+    today_report, tomorrow_report, today_overview_report = get_jma_data(user_data["parent_area_code"], user_data["area_code"])
 
     prompt = ( f"""
-              以下は気象庁から取得した{jma_area}の天気情報です。
-              今日から３日間の気温・降水確率情報はこちらです＝＞{jma_data}
-              気象庁からの概要はこちらです＝＞{jma_overview_data}
+              以下は気象庁から取得した{today_report["area"]}の天気情報です。
+              今日の天気・気温の情報はこちらです＝＞{today_report}
+              明日の天気・最高気温・最低気温・降水確率の情報はこちらです＝＞{tomorrow_report}
+              気象庁からの概要はこちらです＝＞{today_overview_report}
               必ず今日の天気について、服装や出かける際の注意など明るい雰囲気で一言お願いします。
               JSON形式ではなくて大丈夫です。必ずその一言だけを返してください。
     """
@@ -35,4 +33,4 @@ def weather_report_response(user_id):
 
     response = generate_response(prompt)
 
-    return response, jma_data
+    return response, today_report, tomorrow_report

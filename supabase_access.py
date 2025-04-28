@@ -12,8 +12,8 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 def initialize_user_data(user_id): # Supabase初期化
     user_data = {
         "discord_id": user_id,
-        # "area_code": 130000, # 東京都
-        "area_code": 400000, # 福岡県
+        "parent_area_code": 400000, # 福岡県
+        "area_code": 400010, # 福岡市
     }
     supabase.table("users").upsert(user_data).execute()
     print("[Initialize]:", user_data) #debug
@@ -34,6 +34,7 @@ def get_user_data(user_id): # Supabase取得・初期化
 def save_user_data(user_id, user_data):# Supabase保存
     supabase.table("users").update(
         {
+            "parent_area_code": user_data["parent_area_code"],
             "area_code": user_data["area_code"],
         }
     ).eq("discord_id", user_id).execute()
