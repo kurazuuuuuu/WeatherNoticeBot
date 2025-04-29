@@ -3,7 +3,11 @@ from discord.ext import commands
 from discord import app_commands
 import os
 from dotenv import load_dotenv
-from google_gemini import weather_report_response
+from embed import embed_weather_today, embed_scheduling_morning, embed_scheduling_evening
+from supabase_access import get_user_data, get_notice_users, save_user_data
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+scheduler = AsyncIOScheduler()
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -18,38 +22,67 @@ bot = commands.Bot(
     activity=discord.Game("お天気観察")
 )
 
-def embed_weather_today(user_id, user_mention):
-    response, today_report, tomorrow_report = weather_report_response(user_id)
-
-    message = f"""
-        {today_report["date"]}の{today_report["area"]}の天気は{today_report["weather"]}です。
-        現在の気温は{today_report["temp"]}度です。
-        明日({tomorrow_report["date"]})の天気は{tomorrow_report["weather"]}で、最高気温は{tomorrow_report["temp_max"]}度、最低気温は{tomorrow_report["temp_min"]}度です。
-        明日の降水確率は{tomorrow_report["pops"]}%です。
-    """
-
-    embed = discord.Embed(
-        title=f"{user_mention} | 現在の天気情報",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="今日の気象情報", value=message, inline=True)
-    embed.add_field(name="AIからの一言", value=response, inline=True)
-    embed.set_footer(text="気象庁のデータを元に生成しています。")
-
-    return embed
-
 @bot.event
 async def on_ready():
     await bot.tree.sync()  # 自動生成された tree を使う
-    print(f"Logged in as {bot.user.name}")
+    print(f"{bot.user.name}くん！起動完了！")
+    schedule_jobs()   
+
+def schedule_jobs():
+    scheduler.add_job(lambda: bot.loop.create_task(send_report("morning")), 'cron', hour=13, minute=26)
+    scheduler.add_job(lambda: bot.loop.create_task(send_report("evening")), 'cron', hour=18, minute=0)
+    scheduler.start() 
+
+@bot.event
+async def send_report(time):
+    notice_users = get_notice_users()
+    print("[Notice Users]:", notice_users) #debug
+
+    for user in notice_users:
+        if time == "morning":
+            embed = embed_scheduling_morning(user, f"<@{user}>")
+            await bot.get_user(user).send(embed=embed)
+        elif time == "evening":
+            embed = embed_scheduling_evening(user, f"<@{user}>")
+            await bot.get_user(user).send(embed=embed)
 
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    if message.content == "今日の天気":
-        embed = embed_weather_today(message.author.id, message.author.mention)
-        await message.channel.send(embed=embed)
+    if message.content == "test":
+        send_report("morning")
+
+@bot.tree.command(name="weather", description="今日と明日の天気を教えてくれるよ！")
+async def weather (interaction: discord.Interaction):
+    embed = embed_weather_today(interaction.user.id, interaction.user.mention)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="setup", description="天気情報を取得する地域を設定するよ！")
+async def setting(interaction: discord.Interaction, parent_area_code: int, area_code: int):
+    await interaction.response.send_message(f"地域コードを{parent_area_code}と{area_code}に設定しました。", ephemeral=True)
+
+@bot.tree.command(name="notice", description="天気情報を自動で通知するか設定できるよ！")
+async def notice(interaction: discord.Interaction):
+    user_data = get_user_data(interaction.user.id)
+    notice_users = get_notice_users()
+
+    if user_data["notice"] == True:
+        await interaction.response.send_message("通知をオフにしました！", ephemeral=True)
+        user_data["notice"] = False
+        save_user_data(interaction.user.id, user_data)
+
+    else:
+        await interaction.response.send_message("通知をオンにしました！", ephemeral=True)
+        user_data["notice"] = True
+        save_user_data(interaction.user.id, user_data)
+
+
+@bot.tree.command(name="help", description="このボットの使い方を教えてくれるよ！")
+async def help(interaction: discord.Interaction):
+    await interaction.response.send_message("/setting <親地域コード> <地域コード>で天気情報を取得する地域を設定できます。\n"
+        "/weatherで今日と明日の天気を教えてくれます。\n")
 
 bot.run(TOKEN)
+
