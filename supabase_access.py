@@ -14,6 +14,7 @@ def initialize_user_data(user_id): # Supabase初期化
         "discord_id": user_id,
         "parent_area_code": 400000, # 福岡県
         "area_code": 400010, # 福岡市
+        "notice": False,
     }
     supabase.table("users").upsert(user_data).execute()
     print("[Initialize]:", user_data) #debug
@@ -36,7 +37,21 @@ def save_user_data(user_id, user_data):# Supabase保存
         {
             "parent_area_code": user_data["parent_area_code"],
             "area_code": user_data["area_code"],
+            "notice": user_data["notice"],
         }
     ).eq("discord_id", user_id).execute()
 
     print("[Save]:", user_data) #debug
+
+def get_notice_users():
+    notice_users = supabase.table("users").select("discord_id").eq("notice", True).execute()
+    notice_users = notice_users.data
+    result = []
+    print("[Get Notice Users]:", notice_users) #debug
+
+    for user in notice_users:
+        result.append(user["discord_id"])
+
+    print("[Notice Users]:", result) #debug
+
+    return result
