@@ -5,15 +5,14 @@ import os
 from dotenv import load_dotenv
 from embed import embed_weather_today, embed_scheduling_morning, embed_scheduling_evening
 from supabase_access import get_user_data, get_notice_users, save_user_data
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-scheduler = AsyncIOScheduler()
+import schedule
+import time
+import asyncio
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
-intents.members = True # メンバー管理の権限
 intents.message_content = True # メッセージの内容を取得する権限
 
 bot = commands.Bot(
@@ -26,33 +25,27 @@ bot = commands.Bot(
 async def on_ready():
     await bot.tree.sync()  # 自動生成された tree を使う
     print(f"{bot.user.name}くん！起動完了！")
-    schedule_jobs()   
-
-def schedule_jobs():
-    scheduler.add_job(lambda: bot.loop.create_task(send_report("morning")), 'cron', hour=13, minute=26)
-    scheduler.add_job(lambda: bot.loop.create_task(send_report("evening")), 'cron', hour=18, minute=0)
-    scheduler.start() 
 
 @bot.event
 async def send_report(time):
     notice_users = get_notice_users()
     print("[Notice Users]:", notice_users) #debug
 
-    for user in notice_users:
-        if time == "morning":
-            embed = embed_scheduling_morning(user, f"<@{user}>")
-            await bot.get_user(user).send(embed=embed)
-        elif time == "evening":
-            embed = embed_scheduling_evening(user, f"<@{user}>")
-            await bot.get_user(user).send(embed=embed)
+    for user_id in notice_users:
+        try:
+            if time == "morning":
+                embed = embed_scheduling_morning(user_id, f"<@{user_id}>")
+            elif time == "evening":
+                embed = embed_scheduling_evening(user_id, f"<@{user_id}>")
+            else:
+                continue
 
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
-        return
+            user = await bot.fetch_user(user_id)
+            await user.send(embed=embed)
+            print(f"Sent {time} report to {user.name}")
 
-    if message.content == "test":
-        send_report("morning")
+        except Exception as e:
+            print(f"Failed to send DM to {user_id}: {e}")
 
 @bot.tree.command(name="weather", description="今日と明日の天気を教えてくれるよ！")
 async def weather (interaction: discord.Interaction):
@@ -83,6 +76,21 @@ async def notice(interaction: discord.Interaction):
 async def help(interaction: discord.Interaction):
     await interaction.response.send_message("/setting <親地域コード> <地域コード>で天気情報を取得する地域を設定できます。\n"
         "/weatherで今日と明日の天気を教えてくれます。\n")
+    
+def schedule_send_report(time_str):
+    asyncio.run_coroutine_threadsafe(send_report(time_str), bot.loop)
+
+schedule.every().day.at("07:00").do(lambda: schedule_send_report("morning"))
+schedule.every().day.at("18:00").do(lambda: schedule_send_report("evening"))
+
+
+def run_schedule():
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+import threading
+schedule_thread = threading.Thread(target=run_schedule)
+schedule_thread.start()
 
 bot.run(TOKEN)
-
